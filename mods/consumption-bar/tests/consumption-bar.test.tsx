@@ -10,7 +10,7 @@ const at = (ms: number) => new Date(NOW + ms).toISOString()
 type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 
 // Stands for the engine beneath the mod.
-function engine(on: any, first: { rateLimits: Limit[]; cost?: { usd: number } }, toolResult: unknown = {}) {
+function engine(on: any, first: { rateLimits: Limit[]; cost?: { usd: number } }, toolResult: unknown = {}, store: Record<string, unknown> = {}) {
   const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$: any, e: any) => ({ sessionId: 's', cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, ...first } }))
@@ -20,8 +20,16 @@ function engine(on: any, first: { rateLimits: Limit[]; cost?: { usd: number } },
   })
   on('tool.call', () => ({ result: toolResult, text: 'ok' }))
   on('ui.render', ($: any, e: any) => $.ui.resolve(e).Text({ children: 'engine band' }))
-  return { clock }
+  on('store.get', (_$: any, e: any) => ({ value: store[e.key] }))
+  on('store.set', (_$: any, e: any) => ((store[e.key] = JSON.parse(JSON.stringify(e.value))), { value: undefined }))
+  on('store.delete', (_$: any, e: any) => (delete store[e.key], { value: undefined }))
+  on('store.keys', () => ({ value: Object.keys(store) }))
+  return { clock, store }
 }
+
+const DAY = 24 * 60 * 60_000
+const EDIT = { filePath: '/work/a.ts', structuredPatch: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 3, lines: ['+a', '+b', '+c', '-d'] }] }
+const settle = () => new Promise(done => (globalThis as any).setTimeout(done, 20)) // persist runs in the background
 
 const band = (bodyColumns = 70, hasSurvey = false) => ({
   plugin: 'consumption-bar',
@@ -148,6 +156,47 @@ describe('consumption-bar', () => {
     await start($)
     const ui = await $.ui.mount(band(20) as any)
     expect(await texts(ui)).toEqual(['engine band'])
+    await ui.unmount()
+  })
+
+  test('persist: effort and lines saved under s:<startedAt>', async ($, on) => {
+    const { store } = engine(on, { rateLimits: [] }, EDIT)
+    await start($)
+    await step($, 'high')
+    await $.tool.call({ tool: 'Edit', file_path: '/work/a.ts', old_string: 'd', new_string: 'a\nb\nc' } as any)
+    await settle()
+    expect(store[`s:${NOW}`]).toEqual({ effort: 'high', linesAdded: 3, linesRemoved: 1, savedAt: NOW })
+  })
+
+  test('restore: a resumed session gets its effort and lines back', async ($, on) => {
+    engine(on, { rateLimits: [] }, {}, { [`s:${NOW}`]: { effort: 'high', linesAdded: 3, linesRemoved: 1, savedAt: NOW } })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    expect(t).toContain(' [high]')
+    expect(t.join('')).toContain(' · ✏️ +3/-1')
+    await ui.unmount()
+  })
+
+  test('prune: other sessions saved over 7 days ago are deleted', async ($, on) => {
+    const { store } = engine(on, { rateLimits: [] }, {}, {
+      's:1': { savedAt: NOW - 8 * DAY, linesAdded: 0, linesRemoved: 0 },
+      's:2': { savedAt: NOW - DAY, linesAdded: 0, linesRemoved: 0 },
+      's:3': 'no savedAt',
+      other: 'kept',
+    })
+    await start($)
+    expect(Object.keys(store).sort()).toEqual(['other', 's:2'])
+  })
+
+  test('malformed saved value is ignored', async ($, on) => {
+    engine(on, { rateLimits: [] }, {}, { [`s:${NOW}`]: 'garbage' })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    expect(t).toContain('Fable 5.1')
+    expect(t.some(x => x.startsWith(' ['))).toBe(false)
+    expect(t.join('')).not.toContain('✏️')
     await ui.unmount()
   })
 })

@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Snapshot, Window } from '../types'
+import type { Persisted, Snapshot, Window } from '../types'
 
 const MIN_WIDTH = 20 // narrower than this, the card is not drawn
 const TICK_MS = 60_000
@@ -12,12 +12,14 @@ const LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 // Effort tag color, cold to hot. Unknown or numeric levels fall back to gray.
 const EFFORT_COLOR: Record<string, string> = { low: 'gray', medium: 'blue', high: 'yellow', xhigh: '#ff9e64', max: 'red' }
 const ORDER = ['five_hour', 'seven_day']
+const KEEP_MS = 7 * 24 * 3600 * 1000 // saved effort and lines older than this are pruned
 
 // Held by the host, so the card survives a hot reload of this file.
 const snapshot = atom({ plugin: 'consumption-bar', key: 'snapshot' } as const, { model: '', rateLimits: [], linesAdded: 0, linesRemoved: 0 } as Snapshot)
 const tick = atom({ plugin: 'consumption-bar', key: 'tick' } as const, 0)
 
 let timer: Timer | undefined // one countdown timer, even if session.start fires again
+let storeKey: string | undefined // `s:<startedAt>`, stable across a resume
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -29,6 +31,10 @@ export const register: Register = on => {
     const usage = await $.session.usage().catch(() => null)
     if (usage) await take($, usage.rateLimits, usage.cost?.usd).catch(() => {})
     await refreshModel($).catch(() => {})
+    if (usage) {
+      storeKey = `s:${usage.startedAt}`
+      await restore($, storeKey).catch(() => {})
+    }
     return r
   })
 
@@ -49,6 +55,7 @@ export const register: Register = on => {
     if (!e.agentId && e.effort !== undefined) {
       const effort = String(e.effort)
       await update($, snapshot, s => ({ ...s, effort })).catch(() => {})
+      void persist($).catch(() => {})
     }
     return yield* next(e)
   })
@@ -59,6 +66,7 @@ export const register: Register = on => {
       const { added, removed } = countLines(e.tool, r.result)
       if (added + removed > 0) {
         await update($, snapshot, s => ({ ...s, linesAdded: s.linesAdded + added, linesRemoved: s.linesRemoved + removed })).catch(() => {})
+        void persist($).catch(() => {})
       }
     }
     return r
@@ -127,6 +135,30 @@ async function take($: EngineInterface, rateLimits: readonly Window[], costUsd: 
     .filter(w => Number.isFinite(w.percentUsed))
     .map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt }))
   await update($, snapshot, s => ({ ...s, rateLimits: windows, costUsd }))
+}
+
+// Effort and lines live only in the atom; the store brings them back after a restart.
+async function persist($: EngineInterface) {
+  if (!storeKey) return
+  const key = storeKey
+  const snap = await read($, snapshot)
+  const value: Persisted = { effort: snap.effort, linesAdded: snap.linesAdded, linesRemoved: snap.linesRemoved, savedAt: await $.clock.now() }
+  await $.store.set(key, value)
+}
+
+async function restore($: EngineInterface, key: string) {
+  const saved = (await $.store.get(key).catch(() => undefined)) as Partial<Persisted> | undefined
+  if (saved && typeof saved === 'object' && typeof saved.linesAdded === 'number' && typeof saved.linesRemoved === 'number') {
+    const { effort, linesAdded, linesRemoved } = saved
+    await update($, snapshot, s => ({ ...s, ...(typeof effort === 'string' ? { effort } : {}), linesAdded, linesRemoved })).catch(() => {})
+  }
+  const now = await $.clock.now()
+  for (const k of await $.store.keys().catch(() => [] as string[])) {
+    if (!k.startsWith('s:') || k === key) continue
+    const old = (await $.store.get(k).catch(() => undefined)) as Partial<Persisted> | undefined
+    const savedAt = old && typeof old === 'object' ? old.savedAt : undefined
+    if (typeof savedAt !== 'number' || now - savedAt > KEEP_MS) await $.store.delete(k).catch(() => {})
+  }
 }
 
 async function refreshModel($: EngineInterface) {

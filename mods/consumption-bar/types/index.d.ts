@@ -9,6 +9,9 @@ export type Snapshot = {
   linesRemoved: number
 }
 
+// What the store keeps per session, under `s:<startedAt>`.
+export type Persisted = { effort?: string; linesAdded: number; linesRemoved: number; savedAt: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'consumption-bar': { snapshot: Snapshot; tick: number }
