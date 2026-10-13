@@ -9,6 +9,8 @@ import type { Snapshot, Window } from '../types'
 const MIN_WIDTH = 20 // narrower than this, the card is not drawn
 const TICK_MS = 60_000
 const LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
+// Effort tag color, cold to hot. Unknown or numeric levels fall back to gray.
+const EFFORT_COLOR: Record<string, string> = { low: 'gray', medium: 'blue', high: 'yellow', xhigh: '#ff9e64', max: 'red' }
 const ORDER = ['five_hour', 'seven_day']
 
 // Held by the host, so the card survives a hot reload of this file.
@@ -84,14 +86,16 @@ export const register: Register = on => {
             </Text>
             <Text wrap="truncate-start">
               <Text bold>{snap.model}</Text>
-              {snap.effort && <Text dimColor>{` [${snap.effort}]`}</Text>}
-              {snap.costUsd !== undefined && <Text>{` · $${snap.costUsd.toFixed(2)}`}</Text>}
+              {snap.effort && <Text color={EFFORT_COLOR[snap.effort] ?? 'gray'}>{` [${snap.effort}]`}</Text>}
+              {snap.costUsd !== undefined && <Text>{' · '}</Text>}
+              {snap.costUsd !== undefined && <Text color="green">{`$${snap.costUsd.toFixed(2)}`}</Text>}
               {changed && <Text>{' · '}</Text>}
               {changed && <Text color="green">{`+${snap.linesAdded}`}</Text>}
               {changed && <Text dimColor>/</Text>}
               {changed && <Text color="red">{`-${snap.linesRemoved}`}</Text>}
             </Text>
           </Box>
+          {windows.length > 0 && <Text dimColor>{'─'.repeat(inner)}</Text>}
           {windows.map(w => {
             const color = colorFor(w.percentUsed)
             const badge = ` ${Math.round(w.percentUsed)}% `

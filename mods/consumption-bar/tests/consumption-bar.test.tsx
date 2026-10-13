@@ -88,7 +88,10 @@ describe('consumption-bar', () => {
     const t = await texts(ui)
     expect(t).toContain('Fable 5.1')
     expect(t).toContain(' [high]')
-    expect(t).toContain(' · $1.23')
+    expect(t).toContain('$1.23')
+    expect((await ui.find({ type: 'Text', text: /^ \[high\]$/ }))?.props?.color).toBe('yellow')
+    expect((await ui.find({ type: 'Text', text: /^\$1\.23$/ }))?.props?.color).toBe('green')
+    expect(t.some(x => x.startsWith('─'))).toBe(false) // no windows, no separator
     expect(t.join('')).toContain(' · +3/-1')
     expect(t).not.toContain('5h ')
     expect(t).not.toContain('7d ')
@@ -103,6 +106,7 @@ describe('consumption-bar', () => {
     const t = await texts(ui)
     expect(t).toContain(' 42% ')
     expect(t).toContain(' 18% ')
+    expect(t).toContain('─'.repeat(66))
     expect(t).toContain('   resets in 2h10m')
     expect(t).toContain('   resets in 3d04h')
     expect(t.indexOf('5h ')).toBeLessThan(t.indexOf('7d '))
@@ -125,7 +129,7 @@ describe('consumption-bar', () => {
 
     await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 91, resetsAt: at(46 * MIN) }], cost: { usd: 2 }, changed: ['rateLimits'] } as any)
     expect((await ui.find({ type: 'Text', text: /^ 91% $/ }))?.props?.backgroundColor).toBe('red')
-    expect(await texts(ui)).toContain(' · $2.00')
+    expect(await texts(ui)).toContain('$2.00')
     await ui.unmount()
   })
 
