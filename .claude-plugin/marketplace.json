@@ -1,0 +1,15 @@
+{
+  "name": "cm-consumption-bar",
+  "description": "A Claude Code mod: model, cost, lines changed and plan rate limits in a card above the prompt.",
+  "owner": {
+    "name": "epommier"
+  },
+  "plugins": [
+    {
+      "name": "consumption-bar",
+      "description": "Model, effort, session cost, lines added/removed and the 5h/7d rate-limit windows with reset countdowns, in a card above the prompt.",
+      "version": "0.1.0",
+      "source": "./mods/consumption-bar"
+    }
+  ]
+}
