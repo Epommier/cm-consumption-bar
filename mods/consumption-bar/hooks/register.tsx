@@ -85,11 +85,14 @@ export const register: Register = on => {
               <Text bold>consumption</Text>
             </Text>
             <Text wrap="truncate-start">
+              <Text>{'🧠 '}</Text>
               <Text bold>{snap.model}</Text>
               {snap.effort && <Text color={EFFORT_COLOR[snap.effort] ?? 'gray'}>{` [${snap.effort}]`}</Text>}
               {snap.costUsd !== undefined && <Text>{' · '}</Text>}
+              {snap.costUsd !== undefined && <Text>{'💰 '}</Text>}
               {snap.costUsd !== undefined && <Text color="green">{`$${snap.costUsd.toFixed(2)}`}</Text>}
               {changed && <Text>{' · '}</Text>}
+              {changed && <Text>{'✏️ '}</Text>}
               {changed && <Text color="green">{`+${snap.linesAdded}`}</Text>}
               {changed && <Text dimColor>/</Text>}
               {changed && <Text color="red">{`-${snap.linesRemoved}`}</Text>}

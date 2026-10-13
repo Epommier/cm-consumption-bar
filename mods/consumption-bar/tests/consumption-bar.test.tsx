@@ -89,10 +89,12 @@ describe('consumption-bar', () => {
     expect(t).toContain('Fable 5.1')
     expect(t).toContain(' [high]')
     expect(t).toContain('$1.23')
+    expect(t).toContain('🧠 ')
+    expect(t).toContain('💰 ')
     expect((await ui.find({ type: 'Text', text: /^ \[high\]$/ }))?.props?.color).toBe('yellow')
     expect((await ui.find({ type: 'Text', text: /^\$1\.23$/ }))?.props?.color).toBe('green')
     expect(t.some(x => x.startsWith('─'))).toBe(false) // no windows, no separator
-    expect(t.join('')).toContain(' · +3/-1')
+    expect(t.join('')).toContain(' · ✏️ +3/-1')
     expect(t).not.toContain('5h ')
     expect(t).not.toContain('7d ')
     expect(t).toContain('engine band') // stacked, not replaced
