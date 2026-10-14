@@ -277,6 +277,14 @@ describe('consumption-bar', () => {
     await ui.unmount()
   })
 
+  test('hides when no consumption data', async ($, on) => {
+    engine(on, { rateLimits: [] })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect(await texts(ui)).toEqual(['engine band'])
+    await ui.unmount()
+  })
+
   test('too narrow: only the band beneath', async ($, on) => {
     engine(on, { rateLimits: WINDOWS, cost: { usd: 1 } })
     await start($)
@@ -295,7 +303,7 @@ describe('consumption-bar', () => {
   })
 
   test('restore: a resumed session gets its effort and lines back', async ($, on) => {
-    engine(on, { rateLimits: [] }, {}, { [`s:${NOW}`]: { effort: 'high', linesAdded: 3, linesRemoved: 1, savedAt: NOW } })
+    engine(on, { rateLimits: [], cost: { usd: 1 } }, {}, { [`s:${NOW}`]: { effort: 'high', linesAdded: 3, linesRemoved: 1, savedAt: NOW } })
     await start($)
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
@@ -316,7 +324,7 @@ describe('consumption-bar', () => {
   })
 
   test('malformed saved value is ignored', async ($, on) => {
-    engine(on, { rateLimits: [] }, {}, { [`s:${NOW}`]: 'garbage' })
+    engine(on, { rateLimits: [], cost: { usd: 1 } }, {}, { [`s:${NOW}`]: 'garbage' })
     await start($)
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)

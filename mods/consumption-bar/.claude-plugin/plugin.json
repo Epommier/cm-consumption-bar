@@ -1,6 +1,6 @@
 {
   "name": "consumption-bar",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Model, effort, session cost, lines added/removed and the 5h/7d rate-limit windows with reset countdowns, in a card above the prompt.",
   "author": {
     "name": "Etienne Pommier",

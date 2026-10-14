@@ -88,6 +88,7 @@ export const register: Register = on => {
     const snap = await read($, snapshot)
     const inner = e.props.bodyColumns - 4 // the border and padding take 4 cells
     if (e.props.hasSurvey || inner < MIN_WIDTH) return rest
+    if (snap.rateLimits.length === 0 && snap.costUsd === undefined) return rest // nothing measured yet, e.g. after /clear
 
     const { Box, Text } = $.ui.resolve(e)
     const now = await $.clock.now()
