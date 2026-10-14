@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  mod:
+    runs-on: ubuntu-latest
+    env:
+      # Mods need Claude Code 2.1.287 or newer. Bump this on purpose.
+      CLAUDE_CODE_VERSION: 2.1.288
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Claude Code
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          claude --version
+
+      - run: claude plugin validate .
+      - run: claude plugin validate mods/consumption-bar
+      - run: CLAUDE_CONFIG_DIR=$(mktemp -d) claude plugin test mods/consumption-bar

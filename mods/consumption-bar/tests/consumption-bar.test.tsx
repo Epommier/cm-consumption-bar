@@ -10,7 +10,10 @@ const at = (ms: number) => new Date(NOW + ms).toISOString()
 type Limit = { kind: string; percentUsed: number; resetsAt?: string }
 
 // Stands for the engine beneath the mod.
-function engine(on: any, first: { rateLimits: Limit[]; cost?: { usd: number } }, toolResult: unknown = {}, store: Record<string, unknown> = {}) {
+// `stubs` replaces an engine stub by event name (the harness refuses a second on() for one event).
+function engine(on: any, first: { rateLimits: Limit[]; cost?: { usd: number } }, toolResult: unknown = {}, store: Record<string, unknown> = {}, stubs: Record<string, any> = {}) {
+  const real = on
+  on = (name: string, fn: any) => real(name, stubs[name] ?? fn)
   const clock = mock.clock(on, { now: NOW })
   on('session.start', (_$: any, e: any) => ({ sessionId: 's', cwd: e.cwd }))
   on('session.usage', () => ({ value: { startedAt: NOW, context: { window: 200_000 }, ...first } }))
@@ -331,6 +334,72 @@ describe('consumption-bar', () => {
     expect(t).toContain('Fable 5.1')
     expect(t.some(x => x.startsWith(' ['))).toBe(false)
     expect(t.join('')).not.toContain('✏️')
+    await ui.unmount()
+  })
+
+  test('turn.start refreshes the model', async ($, on) => {
+    let model = 'A'
+    engine(on, { rateLimits: [], cost: { usd: 1 } }, {}, {}, { 'session.model': () => ({ value: model }) })
+    on('turn.start', (_$: any, e: any) => ({ turnId: e.turnId }))
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect(await texts(ui)).toContain('A')
+    model = 'B'
+    await $.turn.start({ turnId: 't' } as any)
+    expect(await texts(ui)).toContain('B')
+    await ui.unmount()
+  })
+
+  // The successful counterpart is the header test, where the same Edit shows +3/-1.
+  test('tool.call ignores denied and error results', async ($, on) => {
+    let answer: any
+    engine(on, { rateLimits: [], cost: { usd: 1 } }, {}, {}, { 'tool.call': () => answer })
+    await start($)
+    // A deny carries no result (the harness refuses one beside it); isError keeps the EDIT result.
+    for (const next of [{ deny: 'no' }, { result: EDIT, text: 'failed', isError: true }]) {
+      answer = next
+      await $.tool.call({ tool: 'Edit', file_path: '/work/a.ts', old_string: 'd', new_string: 'a\nb\nc' } as any)
+      const ui = await $.ui.mount(band() as any)
+      const t = await texts(ui)
+      expect(t).toContain('Fable 5.1')
+      expect(t.join('')).not.toContain('✏️')
+      await ui.unmount()
+    }
+  })
+
+  test('session.usage failure hides the card', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS, cost: { usd: 1 } }, {}, {}, { 'session.usage': () => Promise.reject(new Error('down')) })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect(await texts(ui)).toEqual(['engine band'])
+    await ui.unmount()
+  })
+
+  test('yellow badge at 75%', async ($, on) => {
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 75, resetsAt: at(46 * MIN) }] })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect((await ui.find({ type: 'Text', text: /^ 75% $/ }))?.props?.backgroundColor).toBe('yellow')
+    await ui.unmount()
+  })
+
+  test('MIN_WIDTH boundary', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS, cost: { usd: 1 } })
+    await start($)
+    const narrow = await $.ui.mount(band(23) as any) // inner 19 < 20
+    expect(await texts(narrow)).toEqual(['engine band'])
+    await narrow.unmount()
+    const wide = await $.ui.mount(band(24) as any) // inner 20
+    expect(await texts(wide)).toContain('Fable 5.1')
+    await wide.unmount()
+  })
+
+  test('effort colours', async ($, on) => {
+    engine(on, { rateLimits: [], cost: { usd: 1 } })
+    await start($)
+    await step($, 'xhigh')
+    const ui = await $.ui.mount(band() as any)
+    expect((await ui.find({ type: 'Text', text: /^ \[xhigh\]$/ }))?.props?.color).toBe('#ff9e64')
     await ui.unmount()
   })
 })
