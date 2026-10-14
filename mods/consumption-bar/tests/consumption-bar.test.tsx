@@ -402,4 +402,20 @@ describe('consumption-bar', () => {
     expect((await ui.find({ type: 'Text', text: /^ \[xhigh\]$/ }))?.props?.color).toBe('#ff9e64')
     await ui.unmount()
   })
+
+  test('/effort updates the badge at once', async ($, on) => {
+    engine(on, { rateLimits: [], cost: { usd: 1 } })
+    on('command.run', (_$: any, _e: any) => ({ text: '' }))
+    await start($)
+    await step($, 'high')
+    const ui = await $.ui.mount(band() as any)
+    expect(await texts(ui)).toContain(' [high]')
+    await $.command.run({ command: 'effort', args: 'low' } as any)
+    const t = await texts(ui) // same mount, no new turn
+    expect(t).toContain(' [low]')
+    expect(t).not.toContain(' [high]')
+    await $.command.run({ command: 'effort', args: 'bogus' } as any)
+    expect(await texts(ui)).toContain(' [low]')
+    await ui.unmount()
+  })
 })

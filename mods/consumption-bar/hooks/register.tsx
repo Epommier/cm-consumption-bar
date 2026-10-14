@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 // Effort tag color, cold to hot. Unknown or numeric levels fall back to gray.
 const EFFORT_COLOR: Record<string, string> = { low: 'gray', medium: 'blue', high: 'yellow', xhigh: '#ff9e64', max: 'red' }
 const ORDER = ['five_hour', 'seven_day']
+const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 const KEEP_MS = 7 * 24 * 3600 * 1000 // saved effort and lines older than this are pruned
 // The forecast blends your usual pace (median peak of past windows) with this window's own,
 // which counts for half once a quarter (TRUST) of the window has run.
@@ -68,6 +69,16 @@ export const register: Register = on => {
       void persist($).catch(() => {})
     }
     return yield* next(e)
+  })
+
+  on('command.run', { command: 'effort' }, async ($, e, next) => {
+    const r = await next(e)
+    const effort = e.args.trim()
+    if (EFFORTS.has(effort) && !r.exitCode) {
+      await update($, snapshot, s => ({ ...s, effort })).catch(() => {})
+      void persist($).catch(() => {})
+    }
+    return r
   })
 
   on('tool.call', async ($, e, next) => {
