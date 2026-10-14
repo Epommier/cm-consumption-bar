@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+- README redesigned: screenshot, badges, feature and colour tables; the proof-of-concept status-line note is gone.
+
 ## 1.0.0 - 2026-10-14
 
 No behaviour change.
