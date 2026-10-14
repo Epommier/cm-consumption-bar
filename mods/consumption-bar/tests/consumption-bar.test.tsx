@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { bar, colorFor, countdown, countLines } from '../hooks/register'
+import { bar, colorFor, countdown, countLines, forecast, median, trackPace, typicalFor } from '../hooks/register'
 
 const NOW = Date.parse('2026-10-03T12:00:00Z')
 const MIN = 60_000
@@ -82,6 +82,34 @@ describe('consumption-bar', () => {
     expect(countLines('Edit', { structuredPatch: [null, { lines: [1, '+x'] }] })).toEqual({ added: 1, removed: 0 }) // bad entries skipped
   })
 
+  test('forecast and pace helpers', () => {
+    const near = (x: number | undefined, want: number) => expect(Math.abs((x ?? NaN) - want) < 0.05).toBe(true) // no toBeCloseTo here
+    near(forecast('five_hour', 42, at(2 * HOUR + 10 * MIN), NOW, 50), 70.92)
+    near(forecast('five_hour', 4, at(5 * HOUR - 10 * MIN), NOW, 50), 60.29)
+    near(forecast('seven_day', 18, at(3 * 24 * HOUR + 4 * HOUR), NOW), 35.3)
+    near(forecast('five_hour', 42, at(2 * HOUR + 10 * MIN), NOW, 20), 66.94)
+    expect(forecast('five_hour', 42, undefined, NOW)).toBeUndefined()
+    expect(forecast('five_hour', 42, at(-MIN), NOW)).toBeUndefined()
+    expect(forecast('seven_day_opus', 42, at(HOUR), NOW)).toBeUndefined()
+    expect(median([])).toBeUndefined()
+    expect(median([30, 10, 20])).toBe(20)
+    expect(median([10, 20, 30, 40])).toBe(25)
+    expect(typicalFor({ finals: {}, windows: {} }, 'five_hour')).toBe(50)
+    expect(typicalFor(undefined, 'five_hour')).toBe(50) // 0.1.3 snapshot without pace, kept across a hot reload
+
+    const r = at(2 * HOUR)
+    const first = trackPace({ finals: {}, windows: {} }, [{ kind: 'five_hour', percentUsed: 42, resetsAt: r }], NOW)
+    expect(first).toEqual({ finals: {}, windows: { five_hour: { resetsAt: Date.parse(r), peak: 42 } } })
+    expect(trackPace(undefined, [{ kind: 'five_hour', percentUsed: 42, resetsAt: r }], NOW)).toEqual(first) // 0.1.3 snapshot without pace
+    const same = trackPace(first, [{ kind: 'five_hour', percentUsed: 30, resetsAt: at(2 * HOUR + 5 * MIN) }], NOW)
+    expect(same.windows.five_hour.peak).toBe(42)
+    const full = { finals: { five_hour: [1, 2, 3, 4, 5, 6, 7, 8] }, windows: first.windows }
+    const next = trackPace(full, [{ kind: 'five_hour', percentUsed: 3, resetsAt: at(7 * HOUR) }], NOW)
+    expect(next.finals.five_hour).toEqual([2, 3, 4, 5, 6, 7, 8, 42])
+    expect(next.windows.five_hour).toEqual({ resetsAt: Date.parse(at(7 * HOUR)), peak: 3 })
+    expect(trackPace(first, [{ kind: 'other', percentUsed: 9, resetsAt: r }], NOW)).toEqual(first)
+  })
+
   test('header: model, effort, cost, and lines from an Edit', async ($, on) => {
     engine(on, { rateLimits: [], cost: { usd: 1.234 } }, {
       filePath: '/work/a.ts',
@@ -121,9 +149,11 @@ describe('consumption-bar', () => {
     expect(t).toContain('   resets in 3d04h')
     expect(t.indexOf('5h ')).toBeLessThan(t.indexOf('7d '))
     expect((await ui.find({ type: 'Text', text: /^ 42% $/ }))?.props?.backgroundColor).toBe('green')
-    // inner 66 - (2 + 1 + 2 + 5 + 18) = 38 cells of bar
+    // inner 66 - (3 + 2 + 5 + 18 + 2 + 2 + 5) = 29, so 14 cells per bar
     const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
-    expect(row).toBe('5h ' + '█'.repeat(16) + '░'.repeat(22))
+    expect(row).toBe('5h ' + '█'.repeat(6) + '░'.repeat(8))
+    const i = t.indexOf('   resets in 2h10m')
+    expect(t.slice(i + 1, i + 6)).toEqual(['  ', '█'.repeat(10), '░'.repeat(4), '  ', ' 71% '])
     expect(t.indexOf('engine band')).toBeGreaterThan(t.indexOf('7d ')) // card above the band beneath
     await ui.unmount()
   })
@@ -133,13 +163,108 @@ describe('consumption-bar', () => {
     on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
     await start($)
     const ui = await $.ui.mount(band() as any)
-    expect(await texts(ui)).toContain('   resets in 46m')
+    expect(await texts(ui)).toContain('   resets in 46m  ')
     await clock.advance(MIN)
-    expect(await texts(ui)).toContain('   resets in 45m')
+    expect(await texts(ui)).toContain('   resets in 45m  ')
 
     await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 91, resetsAt: at(46 * MIN) }], cost: { usd: 2 }, changed: ['rateLimits'] } as any)
     expect((await ui.find({ type: 'Text', text: /^ 91% $/ }))?.props?.backgroundColor).toBe('red')
     expect(await texts(ui)).toContain('$2.00')
+    await ui.unmount()
+  })
+
+  test('forecast: blue bar and badge after the countdown', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS, cost: { usd: 0 } })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
+    expect(all.filter(x => x.props?.color === 'blue').map(x => x.text)).toEqual(['█'.repeat(10), '█'.repeat(5)])
+    expect((await ui.find({ type: 'Text', text: /^ 71% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect((await ui.find({ type: 'Text', text: /^ 35% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect(t.indexOf(' 71% ')).toBeGreaterThan(t.indexOf('   resets in 2h10m'))
+    expect(t.indexOf(' 35% ')).toBeGreaterThan(t.indexOf('   resets in 3d04h'))
+    const i = t.indexOf('   resets in 3d04h')
+    expect(t.slice(i + 1, i + 6)).toEqual(['  ', '█'.repeat(5), '░'.repeat(9), '  ', ' 35% '])
+    await ui.unmount()
+  })
+
+  test('forecast: placeholder column when the window has no forecast', async ($, on) => {
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 22, resetsAt: at(-MIN) }, WINDOWS[0]], cost: { usd: 0 } })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    expect(t).toContain('   resets in now  ')
+    const i = t.indexOf('5h ')
+    // the empty blue bar may or may not be listed as a leaf
+    expect(t.slice(i + 1, i + 11).filter(x => x !== '')).toEqual(['███', '░'.repeat(11), '  ', ' 22% ', '   resets in now  ', '  ', '░'.repeat(14), '  ', ' --% '])
+    const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
+    expect(all.find(x => x.text === ' --% ')?.props?.backgroundColor).toBe('gray')
+    expect(t).toContain(' 35% ')
+    expect(all.some(x => x.props?.color === 'blue' && x.text === '█'.repeat(5))).toBe(true)
+    await ui.unmount()
+  })
+
+  test('rows with one- and two-digit percents share the same columns', async ($, on) => {
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 5, resetsAt: at(-MIN) }, WINDOWS[0]], cost: { usd: 0 } })
+    await start($)
+    const ui = await $.ui.mount(band(70) as any)
+    const t = await texts(ui)
+    // column at which the badge, the reset text, the forecast bar and the last badge start
+    const columns = (row: string[]) => {
+      const col = (i: number) => row.slice(0, i).join('').length
+      const badge = row.findIndex(x => /^ +\d+% $/.test(x))
+      const reset = row.findIndex(x => x.startsWith('   resets in'))
+      return [col(badge), col(reset), col(reset + 2), col(row.length - 1)]
+    }
+    const five = t.slice(t.indexOf('5h '), t.indexOf('7d ')).filter(x => x !== '')
+    const seven = t.slice(t.indexOf('7d '), t.indexOf('engine band')).filter(x => x !== '')
+    expect(five).toContain('  5% ')
+    expect(columns(five)).toEqual(columns(seven))
+    await ui.unmount()
+  })
+
+  test('forecast: hidden when the row is too narrow', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS, cost: { usd: 0 } })
+    await start($)
+    const ui = await $.ui.mount(band(50) as any)
+    const t = await texts(ui)
+    const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
+    expect(all.some(x => x.props?.color === 'blue' || x.props?.backgroundColor === 'blue')).toBe(false)
+    // inner 46 - (3 + 2 + 5 + 18) = 18 cells of bar, as in 0.1.3
+    const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
+    expect(row).toBe('5h ' + '█'.repeat(8) + '░'.repeat(10))
+    expect(t[t.indexOf('   resets in 2h10m') + 1]).not.toBe('  ')
+    await ui.unmount()
+  })
+
+  test('pace: peaks saved under pace, a rolled-over window becomes a final', async ($, on) => {
+    const { store } = engine(on, { rateLimits: WINDOWS })
+    on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+    await start($)
+    await settle()
+    expect((store.pace as any).windows.five_hour).toEqual({ resetsAt: Date.parse(at(2 * HOUR + 10 * MIN)), peak: 42 })
+    await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 1, resetsAt: at(7 * HOUR + 10 * MIN) }], changed: ['rateLimits'] } as any)
+    await settle()
+    expect((store.pace as any).finals.five_hour).toEqual([42])
+    expect((store.pace as any).windows.five_hour.peak).toBe(1)
+  })
+
+  test('pace: restored from the store lowers the forecast', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS }, {}, { pace: { finals: { five_hour: [20, 20] }, windows: {} } })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    expect(t).toContain(' 67% ') // 71% with the default pace of 50
+    expect(t).not.toContain(' 71% ')
+    await ui.unmount()
+  })
+
+  test('pace: a malformed value is ignored', async ($, on) => {
+    engine(on, { rateLimits: WINDOWS }, {}, { pace: { finals: 'x' } })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect((await ui.find({ type: 'Text', text: /^ 71% $/ }))?.props?.backgroundColor).toBe('blue')
     await ui.unmount()
   })
 

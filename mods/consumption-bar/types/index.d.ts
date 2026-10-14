@@ -7,7 +7,11 @@ export type Snapshot = {
   rateLimits: Window[]
   linesAdded: number
   linesRemoved: number
+  pace: Pace
 }
+
+// The learned pace, under store key `pace`: each kind's last window peaks, and its running window.
+export type Pace = { finals: Record<string, number[]>; windows: Record<string, { resetsAt: number; peak: number }> }
 
 // What the store keeps per session, under `s:<startedAt>`.
 export type Persisted = { effort?: string; linesAdded: number; linesRemoved: number; savedAt: number }
