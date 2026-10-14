@@ -120,11 +120,11 @@ export const register: Register = on => {
           {windows.map(w => {
             const color = colorFor(w.percentUsed)
             const badge = ` ${Math.round(w.percentUsed)}% `.padStart(5)
-            const reset = w.resetsAt ? `   resets in ${countdown(w.resetsAt, now).padEnd(5)}` : ''
+            const reset = w.resetsAt ? ` resets in ${countdown(w.resetsAt, now).padEnd(5)}  ` : ''
             const fixed = 3 + 2 + badge.length + reset.length
             const f = forecast(w.kind, w.percentUsed, w.resetsAt, now, typicalFor(snap.pace, w.kind))
             const fbadge = f === undefined ? ' --% ' : ` ${Math.round(f)}% `.padStart(5)
-            const cells = Math.floor((inner - fixed - 2 - 2 - fbadge.length) / 2)
+            const cells = Math.floor((inner - fixed - 4 - 2 - fbadge.length) / 2)
             // No forecast: an empty placeholder column keeps the bars aligned with the other rows.
             const fb = cells < 10 ? undefined : f === undefined ? { filled: 0, empty: cells } : bar(f, cells)
             const b = bar(w.percentUsed, fb ? cells : Math.max(10, inner - fixed))
@@ -136,7 +136,7 @@ export const register: Register = on => {
                 <Text>{'  '}</Text>
                 <Text bold color="black" backgroundColor={color}>{badge}</Text>
                 {reset && <Text dimColor>{reset}</Text>}
-                {fb && <Text>{'  '}</Text>}
+                {fb && <Text color={f === undefined ? 'gray' : undefined}>{' 📈 '}</Text>}
                 {fb && <Text color="blue">{'█'.repeat(fb.filled)}</Text>}
                 {fb && <Text dimColor>{'░'.repeat(fb.empty)}</Text>}
                 {fb && <Text>{'  '}</Text>}

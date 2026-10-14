@@ -145,15 +145,15 @@ describe('consumption-bar', () => {
     expect(t).toContain(' 42% ')
     expect(t).toContain(' 18% ')
     expect(t).toContain('─'.repeat(66))
-    expect(t).toContain('   resets in 2h10m')
-    expect(t).toContain('   resets in 3d04h')
+    expect(t).toContain(' resets in 2h10m  ')
+    expect(t).toContain(' resets in 3d04h  ')
     expect(t.indexOf('5h ')).toBeLessThan(t.indexOf('7d '))
     expect((await ui.find({ type: 'Text', text: /^ 42% $/ }))?.props?.backgroundColor).toBe('green')
-    // inner 66 - (3 + 2 + 5 + 18 + 2 + 2 + 5) = 29, so 14 cells per bar
+    // inner 66 - (3 + 2 + 5 + 18 + 4 + 2 + 5) = 27, so 13 cells per bar
     const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
-    expect(row).toBe('5h ' + '█'.repeat(6) + '░'.repeat(8))
-    const i = t.indexOf('   resets in 2h10m')
-    expect(t.slice(i + 1, i + 6)).toEqual(['  ', '█'.repeat(10), '░'.repeat(4), '  ', ' 71% '])
+    expect(row).toBe('5h ' + '█'.repeat(5) + '░'.repeat(8))
+    const i = t.indexOf(' resets in 2h10m  ')
+    expect(t.slice(i + 1, i + 6)).toEqual([' 📈 ', '█'.repeat(9), '░'.repeat(4), '  ', ' 71% '])
     expect(t.indexOf('engine band')).toBeGreaterThan(t.indexOf('7d ')) // card above the band beneath
     await ui.unmount()
   })
@@ -163,9 +163,9 @@ describe('consumption-bar', () => {
     on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
     await start($)
     const ui = await $.ui.mount(band() as any)
-    expect(await texts(ui)).toContain('   resets in 46m  ')
+    expect(await texts(ui)).toContain(' resets in 46m    ')
     await clock.advance(MIN)
-    expect(await texts(ui)).toContain('   resets in 45m  ')
+    expect(await texts(ui)).toContain(' resets in 45m    ')
 
     await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 91, resetsAt: at(46 * MIN) }], cost: { usd: 2 }, changed: ['rateLimits'] } as any)
     expect((await ui.find({ type: 'Text', text: /^ 91% $/ }))?.props?.backgroundColor).toBe('red')
@@ -179,13 +179,13 @@ describe('consumption-bar', () => {
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
-    expect(all.filter(x => x.props?.color === 'blue').map(x => x.text)).toEqual(['█'.repeat(10), '█'.repeat(5)])
+    expect(all.filter(x => x.props?.color === 'blue').map(x => x.text)).toEqual(['█'.repeat(9), '█'.repeat(5)])
     expect((await ui.find({ type: 'Text', text: /^ 71% $/ }))?.props?.backgroundColor).toBe('blue')
     expect((await ui.find({ type: 'Text', text: /^ 35% $/ }))?.props?.backgroundColor).toBe('blue')
-    expect(t.indexOf(' 71% ')).toBeGreaterThan(t.indexOf('   resets in 2h10m'))
-    expect(t.indexOf(' 35% ')).toBeGreaterThan(t.indexOf('   resets in 3d04h'))
-    const i = t.indexOf('   resets in 3d04h')
-    expect(t.slice(i + 1, i + 6)).toEqual(['  ', '█'.repeat(5), '░'.repeat(9), '  ', ' 35% '])
+    expect(t.indexOf(' 71% ')).toBeGreaterThan(t.indexOf(' resets in 2h10m  '))
+    expect(t.indexOf(' 35% ')).toBeGreaterThan(t.indexOf(' resets in 3d04h  '))
+    const i = t.indexOf(' resets in 3d04h  ')
+    expect(t.slice(i + 1, i + 6)).toEqual([' 📈 ', '█'.repeat(5), '░'.repeat(8), '  ', ' 35% '])
     await ui.unmount()
   })
 
@@ -194,12 +194,13 @@ describe('consumption-bar', () => {
     await start($)
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
-    expect(t).toContain('   resets in now  ')
+    expect(t).toContain(' resets in now    ')
     const i = t.indexOf('5h ')
     // the empty blue bar may or may not be listed as a leaf
-    expect(t.slice(i + 1, i + 11).filter(x => x !== '')).toEqual(['███', '░'.repeat(11), '  ', ' 22% ', '   resets in now  ', '  ', '░'.repeat(14), '  ', ' --% '])
+    expect(t.slice(i + 1, i + 11).filter(x => x !== '')).toEqual(['███', '░'.repeat(10), '  ', ' 22% ', ' resets in now    ', ' 📈 ', '░'.repeat(13), '  ', ' --% '])
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
     expect(all.find(x => x.text === ' --% ')?.props?.backgroundColor).toBe('gray')
+    expect(all.find(x => x.text === ' 📈 ')?.props?.color).toBe('gray')
     expect(t).toContain(' 35% ')
     expect(all.some(x => x.props?.color === 'blue' && x.text === '█'.repeat(5))).toBe(true)
     await ui.unmount()
@@ -214,7 +215,7 @@ describe('consumption-bar', () => {
     const columns = (row: string[]) => {
       const col = (i: number) => row.slice(0, i).join('').length
       const badge = row.findIndex(x => /^ +\d+% $/.test(x))
-      const reset = row.findIndex(x => x.startsWith('   resets in'))
+      const reset = row.findIndex(x => x.startsWith(' resets in'))
       return [col(badge), col(reset), col(reset + 2), col(row.length - 1)]
     }
     const five = t.slice(t.indexOf('5h '), t.indexOf('7d ')).filter(x => x !== '')
@@ -234,7 +235,7 @@ describe('consumption-bar', () => {
     // inner 46 - (3 + 2 + 5 + 18) = 18 cells of bar, as in 0.1.3
     const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
     expect(row).toBe('5h ' + '█'.repeat(8) + '░'.repeat(10))
-    expect(t[t.indexOf('   resets in 2h10m') + 1]).not.toBe('  ')
+    expect(t[t.indexOf(' resets in 2h10m  ') + 1]).not.toBe(' 📈 ')
     await ui.unmount()
   })
 
