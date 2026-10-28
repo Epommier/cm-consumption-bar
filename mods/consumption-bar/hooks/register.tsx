@@ -123,9 +123,10 @@ export const register: Register = on => {
             </Text>
             <Text wrap="truncate-start">
               <Text>{'🧠 '}</Text>
-              <Text bold>{snap.model}</Text>
+              <Text bold>{prettyModel(snap.model)}</Text>
               {snap.effort && <Text color={EFFORT_COLOR[snap.effort] ?? 'gray'}>{` [${snap.effort}]`}</Text>}
-              {own && <Text color={colorFor(own.percentUsed)}>{` 🎚️ ${Math.round(own.percentUsed)}%`}</Text>}
+              {own && <Text>{' · '}</Text>}
+              {own && <Text color={colorFor(own.percentUsed)}>{`🎚️ ${Math.round(own.percentUsed)}%`}</Text>}
               {snap.costUsd !== undefined && <Text>{' · '}</Text>}
               {snap.costUsd !== undefined && <Text>{'💰 '}</Text>}
               {snap.costUsd !== undefined && <Text color="green">{`$${snap.costUsd.toFixed(2)}`}</Text>}
@@ -271,6 +272,17 @@ export function countdown(resetsAt: string, nowMs: number) {
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h${String(minutes % 60).padStart(2, '0')}m`
   return `${Math.floor(hours / 24)}d${String(hours % 24).padStart(2, '0')}h`
+}
+
+// `claude-fable-5-1` → `Fable 5.1`; anything not of that shape is returned as is.
+export function prettyModel(id: string): string {
+  const m = id.match(/^claude-(.+?)(?:-\d{8})?$/)
+  if (!m) return id
+  const tokens = m[1].split('-')
+  const family = tokens.filter(t => /^[a-z]+$/i.test(t))
+  const nums = tokens.filter(t => /^\d+$/.test(t))
+  if (family.length !== 1 || family.length + nums.length !== tokens.length) return id
+  return `${family[0][0].toUpperCase()}${family[0].slice(1).toLowerCase()} ${nums.join('.')}`
 }
 
 // Percent used at the window's reset, or undefined when the window is unknown or not running.

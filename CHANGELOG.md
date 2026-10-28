@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.1.1 - 2026-10-28
+
+### Changed
+- The ` · ` separator now also sits between the model name/effort badge and the 🎚️ model limit; it is absent when no model limit is shown.
+- The model name is shown as `Fable 5.1` instead of the raw id `claude-fable-5-1`: ids of the form `claude-<family>-<major>-<minor>` are formatted, anything else is shown as-is.
+
 ## 1.1.0 - 2026-10-28
 
 ### Added

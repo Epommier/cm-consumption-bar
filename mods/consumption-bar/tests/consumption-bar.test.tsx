@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 
-import { bar, colorFor, countdown, countLines, forecast, median, trackPace, typicalFor } from '../hooks/register'
+import { bar, colorFor, countdown, countLines, forecast, median, prettyModel, trackPace, typicalFor } from '../hooks/register'
 
 const NOW = Date.parse('2026-10-03T12:00:00Z')
 const MIN = 60_000
@@ -73,6 +73,14 @@ describe('consumption-bar', () => {
     expect(countdown(at(3 * 24 * HOUR + 4 * HOUR), NOW)).toBe('3d04h')
     expect(countdown(at(25 * MIN), NOW)).toBe('25m')
     expect(countdown(at(-MIN), NOW)).toBe('now')
+    expect(prettyModel('claude-fable-5-1')).toBe('Fable 5.1')
+    expect(prettyModel('claude-opus-5-5')).toBe('Opus 5.5')
+    expect(prettyModel('claude-opus-5')).toBe('Opus 5')
+    expect(prettyModel('claude-haiku-4-5-20251001')).toBe('Haiku 4.5')
+    expect(prettyModel('claude-3-5-sonnet')).toBe('Sonnet 3.5')
+    expect(prettyModel('Fable 5.1')).toBe('Fable 5.1')
+    expect(prettyModel('anthropic.claude-opus-5-5-v1:0')).toBe('anthropic.claude-opus-5-5-v1:0')
+    expect(prettyModel('')).toBe('')
 
     const patch = { structuredPatch: [{ oldStart: 1, oldLines: 2, newStart: 1, newLines: 4, lines: [' a', '+b', '+c', '-d', '+e'] }] }
     expect(countLines('Edit', patch)).toEqual({ added: 3, removed: 1 })
@@ -466,25 +474,35 @@ describe('consumption-bar', () => {
     await settle()
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
-    const slider = await ui.find({ type: 'Text', text: /^ 🎚️ \d+%$/ })
+    const slider = await ui.find({ type: 'Text', text: /^🎚️ \d+%$/ })
     await ui.unmount()
     return { t, slider, calls }
   }
 
   test('model limit: shown after the effort for the matching model', async ($, on) => {
     const { t, slider, calls } = await header($, on, () => withPercent(46))
-    expect(slider?.text).toBe(' 🎚️ 46%')
+    expect(slider?.text).toBe('🎚️ 46%')
     expect(slider?.props?.color).toBe('green')
-    expect(t.indexOf(' 🎚️ 46%')).toBe(t.indexOf('Fable 5.1') + 1)
+    expect(t.indexOf(' · ')).toBe(t.indexOf('Fable 5.1') + 1)
+    expect(t.indexOf('🎚️ 46%')).toBe(t.indexOf('Fable 5.1') + 2)
+    expect(t.join('')).toContain('Fable 5.1 · 🎚️ 46% · 💰')
     expect(calls.length).toBe(1)
     expect(calls[0].url).toBe('https://api.anthropic.com/api/oauth/usage')
     expect(calls[0].init).toEqual({ auth: 'h', headers: { accept: 'application/json' } })
+  })
+
+  test('model limit: a raw model id is shown readable and still matches', async ($, on) => {
+    const { t } = await header($, on, () => withPercent(46), 'claude-fable-5-1')
+    expect(t.join('')).toContain('Fable 5.1 · 🎚️ 46%')
+    expect(t.join('')).not.toContain('claude-fable')
   })
 
   test('model limit: none for another model', async ($, on) => {
     const { t } = await header($, on, () => withPercent(46), 'Opus 5.5')
     expect(t.join('')).not.toContain('🎚️')
     expect(t).toContain('Opus 5.5')
+    expect(t.join('')).not.toContain('· 🎚️')
+    expect(t.join('')).toContain('Opus 5.5 · 💰')
   })
 
   test('model limit: no credential, no request', async ($, on) => {
@@ -520,7 +538,7 @@ describe('consumption-bar', () => {
 
   test('model limit: percent capped at 100 (F2)', async ($, on) => {
     const { slider } = await header($, on, () => withPercent(150))
-    expect(slider?.text).toBe(' 🎚️ 100%')
+    expect(slider?.text).toBe('🎚️ 100%')
     expect(slider?.props?.color).toBe('red')
   })
 
@@ -546,7 +564,7 @@ describe('consumption-bar', () => {
     await settle()
     expect(n).toBe(2)
     const ui = await $.ui.mount(band() as any)
-    expect(await texts(ui)).toContain(' 🎚️ 46%')
+    expect(await texts(ui)).toContain('🎚️ 46%')
     await ui.unmount()
   })
 })

@@ -49,7 +49,7 @@ claude --plugin-dir mods/consumption-bar
 
 | Part | Reads as | Meaning |
 |---|---|---|
-| 🧠 model `[effort]` | `claude-fable-5-1 [high] 🎚️ 46%` | The current model and the effort level the last request reported. |
+| 🧠 model `[effort]` | `Fable 5.1 [high] · 🎚️ 46%` | The current model and the effort level the last request reported. |
 | 🎚️ model limit | `🎚️ 46%` | The usage limit scoped to the active model, shown only when that model has one. |
 | 💰 cost | `$10.05` | What this session has cost so far. |
 | ✏️ lines | `+220/-37` | Lines added and removed by `Edit` and `Write` this session, subagents included. |
