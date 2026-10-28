@@ -94,6 +94,7 @@ describe('consumption-bar', () => {
     expect(forecast('five_hour', 42, undefined, NOW)).toBeUndefined()
     expect(forecast('five_hour', 42, at(-MIN), NOW)).toBeUndefined()
     expect(forecast('seven_day_opus', 42, at(HOUR), NOW)).toBeUndefined()
+    expect(forecast('five_hour', 80, at(4 * HOUR), NOW)).toBe(100) // 244 unclamped
     expect(median([])).toBeUndefined()
     expect(median([30, 10, 20])).toBe(20)
     expect(median([10, 20, 30, 40])).toBe(25)
@@ -383,6 +384,36 @@ describe('consumption-bar', () => {
     await ui.unmount()
   })
 
+  test('forecast: capped at 100%, red from 90%', async ($, on) => {
+    // 5h at 80% one hour in: 244% unclamped, so full, 100%, red. 7d at 18%: 35%, blue.
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 80, resetsAt: at(4 * HOUR) }, WINDOWS[0]] })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
+    expect(all.find(x => x.text === ' 100% ')?.props?.backgroundColor).toBe('red')
+    expect(all.some(x => x.props?.color === 'red' && x.text === '█'.repeat(13))).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^ 35% $/ }))?.props?.backgroundColor).toBe('blue')
+    await ui.unmount()
+  })
+
+  test('forecast: red between 90 and 99', async ($, on) => {
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 58, resetsAt: at(2 * HOUR + 10 * MIN) }] })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    expect((await ui.find({ type: 'Text', text: /^ 95% $/ }))?.props?.backgroundColor).toBe('red')
+    await ui.unmount()
+  })
+
+  test('usage badge capped at 100%', async ($, on) => {
+    engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 150, resetsAt: at(46 * MIN) }] })
+    await start($)
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    expect(t).toContain(' 100% ')
+    expect(t.some(x => /1[1-9]\d%|150%/.test(x))).toBe(false)
+    await ui.unmount()
+  })
+
   test('MIN_WIDTH boundary', async ($, on) => {
     engine(on, { rateLimits: WINDOWS, cost: { usd: 1 } })
     await start($)
@@ -416,6 +447,106 @@ describe('consumption-bar', () => {
     expect(t).not.toContain(' [high]')
     await $.command.run({ command: 'effort', args: 'bogus' } as any)
     expect(await texts(ui)).toContain(' [low]')
+    await ui.unmount()
+  })
+
+  // Per-model limit (🎚️), from the host's usage endpoint as probed: Fable at 46%.
+  const FABLE = { kind: 'weekly_scoped', group: 'weekly', percent: 46, severity: 'normal', resets_at: null, scope: { model: { id: null, display_name: 'Fable' }, surface: null }, is_active: true }
+  const SEVEN = { kind: 'seven_day', group: 'weekly', percent: 18, severity: 'normal', resets_at: null, scope: null, is_active: false }
+  const reply = (text: string) => ({ value: { status: 200, ok: true, headers: {}, text } })
+  const withPercent = (percent: unknown) => reply(JSON.stringify({ limits: [SEVEN, { ...FABLE, percent }] }))
+
+  // Starts a session on `model` with `fetch` as the usage endpoint; returns the header texts and the fetch calls.
+  async function header($: any, on: any, fetch: any, model = 'Fable 5.1', authorize: any = () => ({ value: { handle: 'h', kind: 'bearer' } })) {
+    const calls: any[] = []
+    engine(on, { rateLimits: [], cost: { usd: 1 } }, {}, {}, { 'session.model': () => ({ value: model }) })
+    on('session.authorize', authorize)
+    on('http.fetch', (_$: any, e: any) => (calls.push(e), fetch()))
+    await start($)
+    await settle()
+    const ui = await $.ui.mount(band() as any)
+    const t = await texts(ui)
+    const slider = await ui.find({ type: 'Text', text: /^ 🎚️ \d+%$/ })
+    await ui.unmount()
+    return { t, slider, calls }
+  }
+
+  test('model limit: shown after the effort for the matching model', async ($, on) => {
+    const { t, slider, calls } = await header($, on, () => withPercent(46))
+    expect(slider?.text).toBe(' 🎚️ 46%')
+    expect(slider?.props?.color).toBe('green')
+    expect(t.indexOf(' 🎚️ 46%')).toBe(t.indexOf('Fable 5.1') + 1)
+    expect(calls.length).toBe(1)
+    expect(calls[0].url).toBe('https://api.anthropic.com/api/oauth/usage')
+    expect(calls[0].init).toEqual({ auth: 'h', headers: { accept: 'application/json' } })
+  })
+
+  test('model limit: none for another model', async ($, on) => {
+    const { t } = await header($, on, () => withPercent(46), 'Opus 5.5')
+    expect(t.join('')).not.toContain('🎚️')
+    expect(t).toContain('Opus 5.5')
+  })
+
+  test('model limit: no credential, no request', async ($, on) => {
+    const { t, calls } = await header($, on, () => withPercent(46), 'Fable 5.1', () => ({ value: null }))
+    expect(t.join('')).not.toContain('🎚️')
+    expect(calls.length).toBe(0)
+  })
+
+  const failures: [string, () => unknown][] = [['throws', () => Promise.reject(new Error('down'))], ['returns non-JSON', () => reply('not json')], ['returns no limits array', () => reply('{"limits":{}}')]]
+  for (const [why, fetch] of failures) {
+    test(`model limit: a request that ${why} leaves the card as it was`, async ($, on) => {
+      const { t } = await header($, on, fetch)
+      expect(t).toContain('Fable 5.1')
+      expect(t).toContain('$1.00')
+      expect(t.join('')).not.toContain('🎚️')
+    })
+  }
+
+  test('model limit: an empty display name matches nothing (F1)', async ($, on) => {
+    const blank = { ...FABLE, scope: { model: { id: null, display_name: '  ' } } }
+    const { t } = await header($, on, () => reply(JSON.stringify({ limits: [blank, { ...blank, scope: { model: { display_name: '' } } }] })))
+    expect(t.join('')).not.toContain('🎚️')
+  })
+
+  // NaN serialises to null; 1e999 parses to Infinity.
+  const badPercents: [string, () => unknown][] = [['"44"', () => withPercent('44')], ['null', () => withPercent(null)], ['NaN', () => withPercent(NaN)], ['Infinity', () => reply(JSON.stringify({ limits: [FABLE] }).replace('46', '1e999'))]]
+  for (const [what, fetch] of badPercents) {
+    test(`model limit: percent ${what} is ignored (F2)`, async ($, on) => {
+      const { t } = await header($, on, fetch)
+      expect(t.join('')).not.toContain('🎚️')
+    })
+  }
+
+  test('model limit: percent capped at 100 (F2)', async ($, on) => {
+    const { slider } = await header($, on, () => withPercent(150))
+    expect(slider?.text).toBe(' 🎚️ 100%')
+    expect(slider?.props?.color).toBe('red')
+  })
+
+  test('model limit: one request per minute, a failed one included (F4)', async ($, on) => {
+    let n = 0
+    const { clock } = engine(on, { rateLimits: [] })
+    on('session.authorize', () => ({ value: { handle: 'h', kind: 'bearer' } }))
+    on('http.fetch', () => (n++, n === 1 ? Promise.reject(new Error('down')) : withPercent(46)))
+    on('session.measure', (_$: any, e: any) => ({ changed: e.changed }))
+    const measure = (changed: string[]) => $.session.measure({ context: { window: 200_000 }, rateLimits: WINDOWS, changed } as any)
+    await start($)
+    await settle()
+    expect(n).toBe(1)
+    await measure(['rateLimits'])
+    await measure(['rateLimits'])
+    await settle()
+    expect(n).toBe(1)
+    await clock.advance(61_000)
+    await measure(['cost'])
+    await settle()
+    expect(n).toBe(1)
+    await measure(['rateLimits'])
+    await settle()
+    expect(n).toBe(2)
+    const ui = await $.ui.mount(band() as any)
+    expect(await texts(ui)).toContain(' 🎚️ 46%')
     await ui.unmount()
   })
 })

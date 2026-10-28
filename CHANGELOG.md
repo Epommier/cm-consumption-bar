@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.1.0 - 2026-10-28
+
+### Added
+- A per-model limit (`🎚️ 46%`) after the effort badge, shown only when the active model has one (today: Fable). Read through the host, refreshed at most once a minute, silently absent without a first-party login, on a gateway, or on error.
+
+### Changed
+- The forecast bar and its badge turn red at 90% and above (blue below).
+
+### Fixed
+- The forecast and usage badges are capped at 100%.
+
 ## 1.0.1 - 2026-10-14
 
 ### Fixed

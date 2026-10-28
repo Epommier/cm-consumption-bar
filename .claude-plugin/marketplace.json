@@ -9,7 +9,7 @@
     {
       "name": "consumption-bar",
       "description": "Model, effort, session cost, lines added/removed and the 5h/7d rate-limit windows with reset countdowns, in a card above the prompt.",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "source": "./mods/consumption-bar"
     }
   ]

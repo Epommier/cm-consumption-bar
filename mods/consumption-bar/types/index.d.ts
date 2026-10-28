@@ -8,6 +8,7 @@ export type Snapshot = {
   linesAdded: number
   linesRemoved: number
   pace: Pace
+  modelLimits?: { name: string; percentUsed: number }[] // per-model limits from the host's usage endpoint
 }
 
 // The learned pace, under store key `pace`: each kind's last window peaks, and its running window.

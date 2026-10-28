@@ -49,7 +49,8 @@ claude --plugin-dir mods/consumption-bar
 
 | Part | Reads as | Meaning |
 |---|---|---|
-| 🧠 model `[effort]` | `claude-fable-5-1 [high]` | The current model and the effort level the last request reported. |
+| 🧠 model `[effort]` | `claude-fable-5-1 [high] 🎚️ 46%` | The current model and the effort level the last request reported. |
+| 🎚️ model limit | `🎚️ 46%` | The usage limit scoped to the active model, shown only when that model has one. |
 | 💰 cost | `$10.05` | What this session has cost so far. |
 | ✏️ lines | `+220/-37` | Lines added and removed by `Edit` and `Write` this session, subagents included. |
 | Window bar | `5h ████░░ 52% resets in 17m` | How much of the window is used, and when it resets. The countdown moves every minute. |
@@ -68,6 +69,8 @@ claude --plugin-dir mods/consumption-bar
 ## Behaviour
 
 - **Forecast.** Blends your usual pace, the median peak of your last 8 finished windows, with the current window's own rate, which takes over as the window runs. Until a window has finished, the pace defaults to 50% at reset. Right after a reset, when nothing can be projected yet, the column shows an empty gray bar with `--%` so the rows keep lining up. The forecast disappears when the row is too narrow to draw it.
+- **Forecast colour.** The forecast bar and badge are blue, and red from 90%. Values are capped at 100%.
+- **Model limit.** Read through the host's usage endpoint (the credential never reaches the plugin) and refreshed at most once a minute when rate limits change. Silently absent without a first-party login, on a gateway, or on any error.
 - **Remembers.** Effort and line counts survive restarts and resumes. The learned pace is shared across sessions. Saved sessions older than 7 days are pruned.
 - **Hides itself** when nothing is measured yet (for instance right after `/clear`), while a survey is open, and when the prompt body is narrower than 24 columns. Off a subscription there are no windows, so only the header shows.
 - **Fails soft.** If the engine reports an error, the card shows less. It never breaks the prompt.

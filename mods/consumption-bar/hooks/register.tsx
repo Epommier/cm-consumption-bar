@@ -22,6 +22,8 @@ const TRUST = 0.25
 const TYPICAL_DEFAULT = 50 // % per window, until a past window is known
 const FINALS_KEPT = 8
 const SAME_WINDOW_MS = 10 * 60_000 // two readings of one window's reset differ by less than this
+const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage' // per-model limits (e.g. Fable), not in rateLimits
+const LIMITS_EVERY_MS = 60_000
 
 // Held by the host, so the card survives a hot reload of this file.
 const snapshot = atom({ plugin: 'consumption-bar', key: 'snapshot' } as const, { model: '', rateLimits: [], linesAdded: 0, linesRemoved: 0, pace: { finals: {}, windows: {} } } as Snapshot)
@@ -29,6 +31,7 @@ const tick = atom({ plugin: 'consumption-bar', key: 'tick' } as const, 0)
 
 let timer: Timer | undefined // one countdown timer, even if session.start fires again
 let storeKey: string | undefined // `s:<startedAt>`, stable across a resume
+let lastLimitsAt = -Infinity // last per-model limits request, made or attempted
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -40,6 +43,7 @@ export const register: Register = on => {
     const usage = await $.session.usage().catch(() => null)
     if (usage) await take($, usage.rateLimits, usage.cost?.usd).catch(() => {})
     await refreshModel($).catch(() => {})
+    void refreshModelLimits($) // never awaited: a slow network must not hold the hook
     if (usage) {
       storeKey = `s:${usage.startedAt}`
       await restore($, storeKey).catch(() => {})
@@ -52,6 +56,7 @@ export const register: Register = on => {
     const r = await next(e)
     await take($, e.rateLimits, e.cost?.usd).catch(() => {})
     await learn($).catch(() => {})
+    if (e.changed.includes('rateLimits')) void refreshModelLimits($)
     return r
   })
 
@@ -105,6 +110,8 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const windows = [...snap.rateLimits].sort((a, b) => rank(a.kind) - rank(b.kind))
     const changed = snap.linesAdded + snap.linesRemoved > 0
+    const model = snap.model.toLowerCase()
+    const own = snap.modelLimits?.find(l => model.includes(l.name.toLowerCase()))
 
     return (
       <Box flexDirection="column">
@@ -118,6 +125,7 @@ export const register: Register = on => {
               <Text>{'🧠 '}</Text>
               <Text bold>{snap.model}</Text>
               {snap.effort && <Text color={EFFORT_COLOR[snap.effort] ?? 'gray'}>{` [${snap.effort}]`}</Text>}
+              {own && <Text color={colorFor(own.percentUsed)}>{` 🎚️ ${Math.round(own.percentUsed)}%`}</Text>}
               {snap.costUsd !== undefined && <Text>{' · '}</Text>}
               {snap.costUsd !== undefined && <Text>{'💰 '}</Text>}
               {snap.costUsd !== undefined && <Text color="green">{`$${snap.costUsd.toFixed(2)}`}</Text>}
@@ -131,15 +139,16 @@ export const register: Register = on => {
           {windows.length > 0 && <Text dimColor>{'─'.repeat(inner)}</Text>}
           {windows.map(w => {
             const color = colorFor(w.percentUsed)
-            const badge = ` ${Math.round(w.percentUsed)}% `.padStart(5)
+            const badge = pct(w.percentUsed)
             const reset = w.resetsAt ? ` resets in ${countdown(w.resetsAt, now).padEnd(5)}  ` : ''
             const fixed = 3 + 2 + badge.length + reset.length
             const f = forecast(w.kind, w.percentUsed, w.resetsAt, now, typicalFor(snap.pace, w.kind))
-            const fbadge = f === undefined ? ' --% ' : ` ${Math.round(f)}% `.padStart(5)
+            const fbadge = f === undefined ? ' --% ' : pct(f)
             const cells = Math.floor((inner - fixed - 4 - 2 - fbadge.length) / 2)
             // No forecast: an empty placeholder column keeps the bars aligned with the other rows.
             const fb = cells < 10 ? undefined : f === undefined ? { filled: 0, empty: cells } : bar(f, cells)
             const b = bar(w.percentUsed, fb ? cells : Math.max(10, inner - fixed))
+            const fcolor = f === undefined ? 'gray' : f >= 90 ? 'red' : 'blue'
             return (
               <Text wrap="truncate-end">
                 <Text>{`${label(w.kind).padEnd(2)} `}</Text>
@@ -149,10 +158,10 @@ export const register: Register = on => {
                 <Text bold color="black" backgroundColor={color}>{badge}</Text>
                 {reset && <Text dimColor>{reset}</Text>}
                 {fb && <Text color={f === undefined ? 'gray' : undefined}>{' 📈 '}</Text>}
-                {fb && <Text color="blue">{'█'.repeat(fb.filled)}</Text>}
+                {fb && <Text color={fcolor}>{'█'.repeat(fb.filled)}</Text>}
                 {fb && <Text dimColor>{'░'.repeat(fb.empty)}</Text>}
                 {fb && <Text>{'  '}</Text>}
-                {fb && <Text bold color="black" backgroundColor={f === undefined ? 'gray' : 'blue'}>{fbadge}</Text>}
+                {fb && <Text bold color="black" backgroundColor={fcolor}>{fbadge}</Text>}
               </Text>
             )
           })}
@@ -221,10 +230,32 @@ async function refreshModel($: EngineInterface) {
   await update($, snapshot, s => ({ ...s, model }))
 }
 
+// Limits the host's usage endpoint scopes to one model, by display name. The handle and the
+// response go only to fetch and JSON.parse; any failure keeps the last value.
+async function refreshModelLimits($: EngineInterface) {
+  try {
+    const now = await $.clock.now()
+    if (now - lastLimitsAt < LIMITS_EVERY_MS) return
+    lastLimitsAt = now // stamped before the request, so a failing one is throttled too
+    const auth = await $.session.authorize()
+    if (!auth) return
+    const r = await $.http.fetch(USAGE_URL, { auth: auth.handle, headers: { accept: 'application/json' } })
+    const limits = JSON.parse(r.text)?.limits
+    if (!Array.isArray(limits)) return
+    const modelLimits = limits
+      .filter((l: any) => typeof l?.scope?.model?.display_name === 'string' && l.scope.model.display_name.trim() !== '' && Number.isFinite(l?.percent))
+      .map((l: any) => ({ name: l.scope.model.display_name.trim() as string, percentUsed: Math.min(100, Math.max(0, l.percent as number)) }))
+    await update($, snapshot, s => ({ ...s, modelLimits }))
+  } catch {}
+}
+
 export function bar(pct: number, width: number) {
   const filled = Math.round((Math.min(Math.max(pct, 0), 100) / 100) * width)
   return { filled, empty: width - filled }
 }
+
+// Badge text, never above 100%.
+const pct = (p: number) => ` ${Math.min(100, Math.round(p))}% `.padStart(5)
 
 export function colorFor(pct: number): 'green' | 'yellow' | 'red' {
   if (pct >= 90) return 'red'
@@ -251,7 +282,7 @@ export function forecast(kind: string, percentUsed: number, resetsAt: string | u
   const elapsed = Math.max(1, ms - remaining)
   const weight = elapsed / (elapsed + ms * TRUST)
   const rate = (weight * percentUsed) / elapsed + ((1 - weight) * typical) / ms
-  return percentUsed + rate * remaining
+  return Math.min(100, percentUsed + rate * remaining)
 }
 
 export function median(xs: number[]): number | undefined {
