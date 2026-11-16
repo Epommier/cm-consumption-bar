@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 1.1.2 - 2026-11-16
+
+### Fixed
+- Rows keep the same column widths whatever they display: a `100%` badge, a long countdown such as `12h05m`, or a missing reset time no longer shifts the bars or the columns after them.
+- Usage and forecast bars have the same length on every row, and rows end flush with the header.
+
 ## 1.1.1 - 2026-10-28
 
 ### Changed

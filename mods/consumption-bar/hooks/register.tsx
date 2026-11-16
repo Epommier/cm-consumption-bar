@@ -112,6 +112,11 @@ export const register: Register = on => {
     const changed = snap.linesAdded + snap.linesRemoved > 0
     const model = snap.model.toLowerCase()
     const own = snap.modelLimits?.find(l => model.includes(l.name.toLowerCase()))
+    // Row columns, the same for every row: label 3, bar, gap 2, badge 6, reset R, spare, icon 4, bar, gap 2, badge 6.
+    const R = windows.some(w => w.resetsAt) ? 18 : 0 // ` resets in ` + longest countdown (6) + 1
+    const fixed = 3 + 2 + 6 + R
+    const cells = Math.floor((inner - fixed - 12) / 2)
+    const spare = (inner - fixed - 12) % 2
 
     return (
       <Box flexDirection="column">
@@ -141,11 +146,9 @@ export const register: Register = on => {
           {windows.map(w => {
             const color = colorFor(w.percentUsed)
             const badge = pct(w.percentUsed)
-            const reset = w.resetsAt ? ` resets in ${countdown(w.resetsAt, now).padEnd(5)}  ` : ''
-            const fixed = 3 + 2 + badge.length + reset.length
+            const reset = (w.resetsAt ? ` resets in ${countdown(w.resetsAt, now).padEnd(6)} ` : '').padEnd(R)
             const f = forecast(w.kind, w.percentUsed, w.resetsAt, now, typicalFor(snap.pace, w.kind))
-            const fbadge = f === undefined ? ' --% ' : pct(f)
-            const cells = Math.floor((inner - fixed - 4 - 2 - fbadge.length) / 2)
+            const fbadge = f === undefined ? ' --% '.padStart(6) : pct(f)
             // No forecast: an empty placeholder column keeps the bars aligned with the other rows.
             const fb = cells < 10 ? undefined : f === undefined ? { filled: 0, empty: cells } : bar(f, cells)
             const b = bar(w.percentUsed, fb ? cells : Math.max(10, inner - fixed))
@@ -158,6 +161,7 @@ export const register: Register = on => {
                 <Text>{'  '}</Text>
                 <Text bold color="black" backgroundColor={color}>{badge}</Text>
                 {reset && <Text dimColor>{reset}</Text>}
+                {fb && spare > 0 && <Text>{' '}</Text>}
                 {fb && <Text color={f === undefined ? 'gray' : undefined}>{' 📈 '}</Text>}
                 {fb && <Text color={fcolor}>{'█'.repeat(fb.filled)}</Text>}
                 {fb && <Text dimColor>{'░'.repeat(fb.empty)}</Text>}
@@ -256,7 +260,7 @@ export function bar(pct: number, width: number) {
 }
 
 // Badge text, never above 100%.
-const pct = (p: number) => ` ${Math.min(100, Math.round(p))}% `.padStart(5)
+const pct = (p: number) => ` ${Math.min(100, Math.round(p))}% `.padStart(6)
 
 export function colorFor(pct: number): 'green' | 'yellow' | 'red' {
   if (pct >= 90) return 'red'

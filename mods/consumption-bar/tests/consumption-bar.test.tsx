@@ -154,18 +154,18 @@ describe('consumption-bar', () => {
     await start($)
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
-    expect(t).toContain(' 42% ')
-    expect(t).toContain(' 18% ')
+    expect(t).toContain('  42% ')
+    expect(t).toContain('  18% ')
     expect(t).toContain('─'.repeat(66))
     expect(t).toContain(' resets in 2h10m  ')
     expect(t).toContain(' resets in 3d04h  ')
     expect(t.indexOf('5h ')).toBeLessThan(t.indexOf('7d '))
-    expect((await ui.find({ type: 'Text', text: /^ 42% $/ }))?.props?.backgroundColor).toBe('green')
-    // inner 66 - (3 + 2 + 5 + 18 + 4 + 2 + 5) = 27, so 13 cells per bar
+    expect((await ui.find({ type: 'Text', text: /^  42% $/ }))?.props?.backgroundColor).toBe('green')
+    // inner 66 - (3 + 2 + 6 + 18 + 4 + 2 + 6) = 25, so 12 cells per bar and 1 spare
     const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
-    expect(row).toBe('5h ' + '█'.repeat(5) + '░'.repeat(8))
+    expect(row).toBe('5h ' + '█'.repeat(5) + '░'.repeat(7))
     const i = t.indexOf(' resets in 2h10m  ')
-    expect(t.slice(i + 1, i + 6)).toEqual([' 📈 ', '█'.repeat(9), '░'.repeat(4), '  ', ' 71% '])
+    expect(t.slice(i + 1, i + 7)).toEqual([' ', ' 📈 ', '█'.repeat(9), '░'.repeat(3), '  ', '  71% '])
     expect(t.indexOf('engine band')).toBeGreaterThan(t.indexOf('7d ')) // card above the band beneath
     await ui.unmount()
   })
@@ -180,7 +180,7 @@ describe('consumption-bar', () => {
     expect(await texts(ui)).toContain(' resets in 45m    ')
 
     await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 91, resetsAt: at(46 * MIN) }], cost: { usd: 2 }, changed: ['rateLimits'] } as any)
-    expect((await ui.find({ type: 'Text', text: /^ 91% $/ }))?.props?.backgroundColor).toBe('red')
+    expect((await ui.find({ type: 'Text', text: /^  91% $/ }))?.props?.backgroundColor).toBe('red')
     expect(await texts(ui)).toContain('$2.00')
     await ui.unmount()
   })
@@ -191,13 +191,13 @@ describe('consumption-bar', () => {
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
-    expect(all.filter(x => x.props?.color === 'blue').map(x => x.text)).toEqual(['█'.repeat(9), '█'.repeat(5)])
-    expect((await ui.find({ type: 'Text', text: /^ 71% $/ }))?.props?.backgroundColor).toBe('blue')
-    expect((await ui.find({ type: 'Text', text: /^ 35% $/ }))?.props?.backgroundColor).toBe('blue')
-    expect(t.indexOf(' 71% ')).toBeGreaterThan(t.indexOf(' resets in 2h10m  '))
-    expect(t.indexOf(' 35% ')).toBeGreaterThan(t.indexOf(' resets in 3d04h  '))
+    expect(all.filter(x => x.props?.color === 'blue').map(x => x.text)).toEqual(['█'.repeat(9), '█'.repeat(4)])
+    expect((await ui.find({ type: 'Text', text: /^  71% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect((await ui.find({ type: 'Text', text: /^  35% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect(t.indexOf('  71% ')).toBeGreaterThan(t.indexOf(' resets in 2h10m  '))
+    expect(t.indexOf('  35% ')).toBeGreaterThan(t.indexOf(' resets in 3d04h  '))
     const i = t.indexOf(' resets in 3d04h  ')
-    expect(t.slice(i + 1, i + 6)).toEqual([' 📈 ', '█'.repeat(5), '░'.repeat(8), '  ', ' 35% '])
+    expect(t.slice(i + 1, i + 7)).toEqual([' ', ' 📈 ', '█'.repeat(4), '░'.repeat(8), '  ', '  35% '])
     await ui.unmount()
   })
 
@@ -209,12 +209,12 @@ describe('consumption-bar', () => {
     expect(t).toContain(' resets in now    ')
     const i = t.indexOf('5h ')
     // the empty blue bar may or may not be listed as a leaf
-    expect(t.slice(i + 1, i + 11).filter(x => x !== '')).toEqual(['███', '░'.repeat(10), '  ', ' 22% ', ' resets in now    ', ' 📈 ', '░'.repeat(13), '  ', ' --% '])
+    expect(t.slice(i + 1, i + 12).filter(x => x !== '')).toEqual(['███', '░'.repeat(9), '  ', '  22% ', ' resets in now    ', ' ', ' 📈 ', '░'.repeat(12), '  ', '  --% '])
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
-    expect(all.find(x => x.text === ' --% ')?.props?.backgroundColor).toBe('gray')
+    expect(all.find(x => x.text === '  --% ')?.props?.backgroundColor).toBe('gray')
     expect(all.find(x => x.text === ' 📈 ')?.props?.color).toBe('gray')
-    expect(t).toContain(' 35% ')
-    expect(all.some(x => x.props?.color === 'blue' && x.text === '█'.repeat(5))).toBe(true)
+    expect(t).toContain('  35% ')
+    expect(all.some(x => x.props?.color === 'blue' && x.text === '█'.repeat(4))).toBe(true)
     await ui.unmount()
   })
 
@@ -228,13 +228,50 @@ describe('consumption-bar', () => {
       const col = (i: number) => row.slice(0, i).join('').length
       const badge = row.findIndex(x => /^ +\d+% $/.test(x))
       const reset = row.findIndex(x => x.startsWith(' resets in'))
-      return [col(badge), col(reset), col(reset + 2), col(row.length - 1)]
+      return [col(badge), col(reset), col(row.indexOf(' 📈 ') + 1), col(row.length - 1)]
     }
     const five = t.slice(t.indexOf('5h '), t.indexOf('7d ')).filter(x => x !== '')
     const seven = t.slice(t.indexOf('7d '), t.indexOf('engine band')).filter(x => x !== '')
-    expect(five).toContain('  5% ')
+    expect(five).toContain('   5% ')
     expect(columns(five)).toEqual(columns(seven))
     await ui.unmount()
+  })
+
+  test('rows keep fixed columns whatever they show, and fill the card', async ($, on) => {
+    // 5h: 100% used, forecast 100%, short countdown. 7d: 3% used, forecast 4%, 6-character countdown.
+    // xx (a kind with no reset time and no forecast): one digit, placeholder forecast.
+    engine(on, {
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 100, resetsAt: at(46 * MIN) },
+        { kind: 'seven_day', percentUsed: 3, resetsAt: at(12 * HOUR + 5 * MIN) },
+        { kind: 'xx', percentUsed: 4 },
+      ],
+      cost: { usd: 0 },
+    })
+    await start($)
+    for (const [bodyColumns, forecasts] of [[70, true], [117, true], [50, false]] as const) {
+      const inner = bodyColumns - 4
+      const ui = await $.ui.mount(band(bodyColumns) as any)
+      const t = await texts(ui)
+      const starts = t.flatMap((x, i) => (/^(5h|7d|xx) $/.test(x) ? [i] : []))
+      const rows = starts.map((s, k) => t.slice(s, starts[k + 1] ?? t.indexOf('engine band')).filter(x => x !== ''))
+      expect(rows.length).toBe(3)
+      expect(rows[1]).toContain(' resets in 12h05m ')
+      // column at which the badge, the reset text, the forecast icon, the forecast bar and the last badge start
+      const columns = (row: string[]) => {
+        const col = (i: number) => row.slice(0, i).join('').length
+        const badge = row.findIndex(x => /^ +\d+% $/.test(x))
+        const icon = row.indexOf(' 📈 ')
+        return forecasts ? [col(badge), col(badge + 1), col(icon), col(icon + 1), col(row.length - 1)] : [col(badge), col(badge + 1)]
+      }
+      const first = columns(rows[0] ?? [])
+      for (const row of rows) {
+        expect(row.join('').length).toBe(inner)
+        expect(row.includes(' 📈 ')).toBe(forecasts)
+        expect(columns(row)).toEqual(first)
+      }
+      await ui.unmount()
+    }
   })
 
   test('forecast: hidden when the row is too narrow', async ($, on) => {
@@ -244,9 +281,9 @@ describe('consumption-bar', () => {
     const t = await texts(ui)
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
     expect(all.some(x => x.props?.color === 'blue' || x.props?.backgroundColor === 'blue')).toBe(false)
-    // inner 46 - (3 + 2 + 5 + 18) = 18 cells of bar, as in 0.1.3
+    // inner 46 - (3 + 2 + 6 + 18) = 17 cells of bar
     const row = t.slice(t.indexOf('5h '), t.indexOf('5h ') + 3).join('')
-    expect(row).toBe('5h ' + '█'.repeat(8) + '░'.repeat(10))
+    expect(row).toBe('5h ' + '█'.repeat(7) + '░'.repeat(10))
     expect(t[t.indexOf(' resets in 2h10m  ') + 1]).not.toBe(' 📈 ')
     await ui.unmount()
   })
@@ -268,8 +305,8 @@ describe('consumption-bar', () => {
     await start($)
     const ui = await $.ui.mount(band() as any)
     const t = await texts(ui)
-    expect(t).toContain(' 67% ') // 71% with the default pace of 50
-    expect(t).not.toContain(' 71% ')
+    expect(t).toContain('  67% ') // 71% with the default pace of 50
+    expect(t).not.toContain('  71% ')
     await ui.unmount()
   })
 
@@ -277,7 +314,7 @@ describe('consumption-bar', () => {
     engine(on, { rateLimits: WINDOWS }, {}, { pace: { finals: 'x' } })
     await start($)
     const ui = await $.ui.mount(band() as any)
-    expect((await ui.find({ type: 'Text', text: /^ 71% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect((await ui.find({ type: 'Text', text: /^  71% $/ }))?.props?.backgroundColor).toBe('blue')
     await ui.unmount()
   })
 
@@ -388,7 +425,7 @@ describe('consumption-bar', () => {
     engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 75, resetsAt: at(46 * MIN) }] })
     await start($)
     const ui = await $.ui.mount(band() as any)
-    expect((await ui.find({ type: 'Text', text: /^ 75% $/ }))?.props?.backgroundColor).toBe('yellow')
+    expect((await ui.find({ type: 'Text', text: /^  75% $/ }))?.props?.backgroundColor).toBe('yellow')
     await ui.unmount()
   })
 
@@ -399,8 +436,8 @@ describe('consumption-bar', () => {
     const ui = await $.ui.mount(band() as any)
     const all: any[] = (await ui.findAll({ type: 'Text' })) ?? []
     expect(all.find(x => x.text === ' 100% ')?.props?.backgroundColor).toBe('red')
-    expect(all.some(x => x.props?.color === 'red' && x.text === '█'.repeat(13))).toBe(true)
-    expect((await ui.find({ type: 'Text', text: /^ 35% $/ }))?.props?.backgroundColor).toBe('blue')
+    expect(all.some(x => x.props?.color === 'red' && x.text === '█'.repeat(12))).toBe(true)
+    expect((await ui.find({ type: 'Text', text: /^  35% $/ }))?.props?.backgroundColor).toBe('blue')
     await ui.unmount()
   })
 
@@ -408,7 +445,7 @@ describe('consumption-bar', () => {
     engine(on, { rateLimits: [{ kind: 'five_hour', percentUsed: 58, resetsAt: at(2 * HOUR + 10 * MIN) }] })
     await start($)
     const ui = await $.ui.mount(band() as any)
-    expect((await ui.find({ type: 'Text', text: /^ 95% $/ }))?.props?.backgroundColor).toBe('red')
+    expect((await ui.find({ type: 'Text', text: /^  95% $/ }))?.props?.backgroundColor).toBe('red')
     await ui.unmount()
   })
 
